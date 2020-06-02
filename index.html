@@ -1,0 +1,1369 @@
+<html>
+  <head>
+    <title>Advanced Crash Data</title>
+    <script src="https://unpkg.com/deck.gl@^8.1.0/dist.min.js"></script>
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v1.4.0/mapbox-gl.js"></script>
+    <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v1.4.0/mapbox-gl.css" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Oxanium&display=swap" rel="stylesheet">
+    <script src="https://d3js.org/d3-dsv.v1.min.js"></script>
+    <script src="https://d3js.org/d3-fetch.v1.min.js"></script>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    
+
+    <style>
+      html, body{
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+        font-family: "Oxanium", cursive;
+      }
+      #control-panel{
+        width: 275px;
+        position: fixed;
+        max-height: 95vh;
+        top: 8px;
+        left: 8px;
+        padding: 8px;
+        font-size: 14px;
+        z-index: 10;
+      }
+      #control-panel, #tooltip, #legend{
+        background: #17171d;
+        opacity: 0.8;
+        color:#ddd;
+        border: 1px solid #555;
+        border-radius: 8px;
+      }
+      #control-panel select{
+        width: 100%;
+        padding: 5px;
+        font-size: 14px;
+        border: 0px;
+        background: #292929;
+        color: #ddd;
+        height: 34px;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        font-family: "Oxanium", cursive;
+      }
+      #control-panel select[disabled]{
+        cursor: not-allowed;
+        background-image: none;
+        background-color: #666;
+        color: #ccc;
+      }
+      #control-panel select:hover{
+        cursor: pointer;
+      }
+      .control-panel-row{
+        margin-bottom: 12px;
+      }
+      .hidden{
+        display: none;
+      }
+      #tooltip:empty{
+        display: none;
+      }
+      #tooltip{
+        position: absolute;
+        padding: 6px;
+        margin: 8px;
+        max-width: 325px;
+        z-index: 100;
+        pointer-events: none;
+      }
+      #tooltip table{
+        border-collapse: collapse;
+        color: #ddd;
+        font-size: 14px;
+      }
+      #tooltip th{
+        text-align: left;
+        font-weight: normal;
+        padding: 2px 6px 12px 6px;
+      }
+      #tooltip td{
+        padding: 2px 6px;
+      }
+      #tooltip .numeric{
+        text-align: right;
+      }
+      #tooltip .total td{
+        border-top: 1px solid #aaa;
+      }
+      #tooltip td.featured{
+        background: rgba(252, 255, 164, 0.9);
+        color: #17171d;
+      }
+      #radius{
+        margin-top: 4px;
+        width: 90%;
+      }
+      #radius::-moz-range-track{
+        background: rgb(144, 144, 144);
+      }
+      #labels{
+        color: #ddd;
+      }
+      .card{
+        background-color: #17171d;
+        opacity: 0.8;
+        border: 1px solid #555;
+        border-radius: 8px;
+      }
+      .btn{
+        text-decoration: none;
+        color: #ddd;
+      }
+      .color-variable-total{
+        font-size: 16px;
+      }
+      #legend{
+        position: absolute;
+        bottom: 26px;
+        right: 8px;
+        z-index: 9;
+        padding: 4px 6px;
+        font-size: 12px;
+      }
+      .legend-label{
+        margin-bottom: 3px;
+      }
+      .legend-bar{
+        display: inline-block;
+        width: 20px;
+        height: 15px;
+      }
+      .legend-max{
+        float: right;
+      }
+      .btn:hover{
+        color: #fff;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="control-panel">
+      <div class="control-panel-row color-variable-total">
+        <span id="color-variable-count">
+          Gathering data
+          <img src="https://cdn.toddwschneider.com/collisions/ajax-loader.gif" alt="throbber">
+        </span>
+        <span id="color-variable-label"></span>
+      </div>
+
+      <div class="accordion" id="filters">
+          <div class="card">
+              <div class="card-header" id="timeFilter">
+                  <h2 class="mb-0">
+                      <button type="button" class="btn btn-link" data-toggle="collapse" data-target="#collapseOne">
+                          <i class="fa fa-angle-down"></i> Time Filters
+                      </button>
+                  </h2>
+              </div>
+              <div id="collapseOne" class="collapse" aria-labelledby="timeFilter" data-parent="#filters">
+                  <div class="card-body">
+                      <span id="labels">Year</span>
+                      <select id="year" onchange="setData()">
+                          <option value="">2014-2018</option>
+                          <option value="2018" selected>2018</option>
+                          <option value="2017">2017</option>
+                          <option value="2016">2016</option>
+                          <option value="2015">2015</option>
+                          <option value="2014">2014</option>
+                      </select>
+
+                      <span id="labels">Month</span>
+                      <select id="month" onchange="updateCurrentFilters()">
+                          <option value="">All</option>
+                          <option value="1">January</option>
+                          <option value="2">February</option>
+                          <option value="3">March</option>
+                          <option value="4">April</option>
+                          <option value="5">May</option>
+                          <option value="6">June</option>
+                          <option value="7">July</option>
+                          <option value="8">August</option>
+                          <option value="9">September</option>
+                          <option value="10">October</option>
+                          <option value="11">November</option>
+                          <option value="12">December</option>
+                      </select>
+
+                      <span id="labels">Day of Week</span>
+                      <select id="day" onchange="updateCurrentFilters()">
+                          <option value="">All</option>
+                          <option value="sun">Sunday</option>
+                          <option value="mon">Monday</option>
+                          <option value="tue">Tuesday</option>
+                          <option value="wed">Wednesday</option>
+                          <option value="thu">Thursday</option>
+                          <option value="fri">Friday</option>
+                          <option value="sat">Saturday</option>
+                      </select>
+                  </div>
+              </div>
+          </div>
+          <div class="card">
+            <div class="card-header" id="goegraphyFilter">
+                <h2 class="mb-0">
+                    <button type="button" class="btn btn-link" data-toggle="collapse" data-target="#collapseTwo">
+                        <i class="fa fa-angle-down"></i> Geography Filters
+                    </button>
+                </h2>
+            </div>
+            <div id="collapseTwo" class="collapse" aria-labelledby="geographyFilter" data-parent="#filters">
+                <div class="card-body">
+                  <span id="labels">County</span>
+                  <select id="county" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="brazoria">Brazoria</option>
+                    <option value="chambers">Chambers</option>
+                    <option value="fort bend">Fort Bend</option>
+                    <option value="galveston">Galveston</option>
+                    <option value="harris">Harris</option>
+                    <option value="liberty">Liberty</option>
+                    <option value="montgomery">Montgomery</option>
+                    <option value="waller">Waller</option>
+                  </select>
+
+                  <span id="labels">Un/Incorporated</span>
+                  <select id="areas" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="1">Incorporated Areas</option>
+                    <option value="2">Unincorporated Areas</option>
+                  </select>
+
+                  <span id="labels">County Commissioner Precinct</span>
+                  <select id="commissioner" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="b1">Brazoria - 1</option>
+                    <option value="b2">Brazoria - 2</option>
+                    <option value="b3">Brazoria - 3</option>
+                    <option value="b4">Brazoria - 4</option>
+                    <option value="c1">Chambers - 1</option>
+                    <option value="c2">Chambers - 2</option>
+                    <option value="c3">Chambers - 3</option>
+                    <option value="c4">Chambers - 4</option>
+                    <option value="f1">Fort Bend - 1</option>
+                    <option value="f2">Fort Bend - 2</option>
+                    <option value="f3">Fort Bend - 3</option>
+                    <option value="f4">Fort Bend - 4</option>
+                    <option value="g1">Galveston - 1</option>
+                    <option value="g2">Galveston - 2</option>
+                    <option value="g3">Galveston - 3</option>
+                    <option value="g4">Galveston - 4</option>
+                    <option value="h1">Harris - 1</option>
+                    <option value="h2">Harris - 2</option>
+                    <option value="h3">Harris - 3</option>
+                    <option value="h4">Harris - 4</option>
+                    <option value="l1">Liberty - 1</option>
+                    <option value="l2">Liberty - 2</option>
+                    <option value="l3">Liberty - 3</option>
+                    <option value="l4">Liberty - 4</option>
+                    <option value="m1">Montgomery - 1</option>
+                    <option value="m2">Montgomery - 2</option>
+                    <option value="m3">Montgomery - 3</option>
+                    <option value="m4">Montgomery - 4</option>
+                    <option value="w1">Waller - 1</option>
+                    <option value="w2">Waller - 2</option>
+                    <option value="w3">Waller - 3</option>
+                    <option value="w4">Waller - 4</option>
+                  </select>
+
+                  <span id="labels">City Council District</span>
+                  <select id="council" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="b1">Baytown - District 1</option>
+                    <option value="b2">Baytown - District 2</option>
+                    <option value="b3">Baytown - District 3</option>
+                    <option value="b4">Baytown - District 4</option>
+                    <option value="b5">Baytown - District 5</option>
+                    <option value="g1">Galveston - District 1</option>
+                    <option value="g2">Galveston - District 2</option>
+                    <option value="g3">Galveston - District 3</option>
+                    <option value="g4">Galveston - District 4</option>
+                    <option value="g5">Galveston - District 5</option>
+                    <option value="g6">Galveston - District 6</option>
+                    <option value="h1">Houston - District A</option>
+                    <option value="h2">Houston - District B</option>
+                    <option value="h3">Houston - District C</option>
+                    <option value="h4">Houston - District D</option>
+                    <option value="h5">Houston - District E</option>
+                    <option value="h6">Houston - District F</option>
+                    <option value="h7">Houston - District G</option>
+                    <option value="h8">Houston - District H</option>
+                    <option value="h9">Houston - District I</option>
+                    <option value="h10">Houston - District J</option>
+                    <option value="h11">Houston - District K</option>
+                    <option value="m1">Missouri City - District A</option>
+                    <option value="m2">Missouri City - District B</option>
+                    <option value="m3">Missouri City - District C</option>
+                    <option value="m4">Missouri City - District D</option>
+                    <option value="n">None</option>
+                    <option value="p1">Pasadena - District A</option>
+                    <option value="p2">Pasadena - District B</option>
+                    <option value="p3">Pasadena - District C</option>
+                    <option value="p4">Pasadena - District D</option>
+                    <option value="p5">Pasadena - District E</option>
+                    <option value="p6">Pasadena - District F</option>
+                    <option value="p7">Pasadena - District G</option>
+                    <option value="p8">Pasadena - District H</option>
+                    <option value="s1">Sugar Land - District 1</option>
+                    <option value="s2">Sugar Land - District 2</option>
+                    <option value="s3">Sugar Land - District 3</option>
+                    <option value="s4">Sugar Land - District 4</option>
+                    <option value="t1">Texas City - District 1</option>
+                    <option value="t2">Texas City - District 2</option>
+                    <option value="t3">Texas City - District 3</option>
+                    <option value="t4">Texas City - District 4</option>
+                  </select>
+
+                  <span id="labels">Zip Code</span>
+                  <select id="zip" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="99999">Null</option>
+                    <option value="77002">77002</option>
+                    <option value="77003">77003</option>
+                    <option value="77004">77004</option>
+                    <option value="77005">77005</option>
+                    <option value="77006">77006</option>
+                    <option value="77007">77007</option>
+                    <option value="77008">77008</option>
+                    <option value="77009">77009</option>
+                    <option value="77010">77010</option>
+                    <option value="77011">77011</option>
+                    <option value="77012">77012</option>
+                    <option value="77013">77013</option>
+                    <option value="77014">77014</option>
+                    <option value="77015">77015</option>
+                    <option value="77016">77016</option>
+                    <option value="77017">77017</option>
+                    <option value="77018">77018</option>
+                    <option value="77019">77019</option>
+                    <option value="77020">77020</option>
+                    <option value="77021">77021</option>
+                    <option value="77022">77022</option>
+                    <option value="77023">77023</option>
+                    <option value="77024">77024</option>
+                    <option value="77025">77025</option>
+                    <option value="77026">77026</option>
+                    <option value="77027">77027</option>
+                    <option value="77028">77028</option>
+                    <option value="77029">77029</option>
+                    <option value="77030">77030</option>
+                    <option value="77031">77031</option>
+                    <option value="77032">77032</option>
+                    <option value="77033">77033</option>
+                    <option value="77034">77034</option>
+                    <option value="77035">77035</option>
+                    <option value="77036">77036</option>
+                    <option value="77037">77037</option>
+                    <option value="77038">77038</option>
+                    <option value="77039">77039</option>
+                    <option value="77040">77040</option>
+                    <option value="77041">77041</option>
+                    <option value="77042">77042</option>
+                    <option value="77043">77043</option>
+                    <option value="77044">77044</option>
+                    <option value="77045">77045</option>
+                    <option value="77046">77046</option>
+                    <option value="77047">77047</option>
+                    <option value="77048">77048</option>
+                    <option value="77049">77049</option>
+                    <option value="77050">77050</option>
+                    <option value="77051">77051</option>
+                    <option value="77052">77052</option>
+                    <option value="77053">77053</option>
+                    <option value="77054">77054</option>
+                    <option value="77055">77055</option>
+                    <option value="77056">77056</option>
+                    <option value="77057">77057</option>
+                    <option value="77058">77058</option>
+                    <option value="77059">77059</option>
+                    <option value="77060">77060</option>
+                    <option value="77061">77061</option>
+                    <option value="77062">77062</option>
+                    <option value="77063">77063</option>
+                    <option value="77064">77064</option>
+                    <option value="77065">77065</option>
+                    <option value="77066">77066</option>
+                    <option value="77067">77067</option>
+                    <option value="77068">77068</option>
+                    <option value="77069">77069</option>
+                    <option value="77070">77070</option>
+                    <option value="77071">77071</option>
+                    <option value="77072">77072</option>
+                    <option value="77073">77073</option>
+                    <option value="77074">77074</option>
+                    <option value="77075">77075</option>
+                    <option value="77076">77076</option>
+                    <option value="77077">77077</option>
+                    <option value="77078">77078</option>
+                    <option value="77079">77079</option>
+                    <option value="77080">77080</option>
+                    <option value="77081">77081</option>
+                    <option value="77082">77082</option>
+                    <option value="77083">77083</option>
+                    <option value="77084">77084</option>
+                    <option value="77085">77085</option>
+                    <option value="77086">77086</option>
+                    <option value="77087">77087</option>
+                    <option value="77088">77088</option>
+                    <option value="77089">77089</option>
+                    <option value="77090">77090</option>
+                    <option value="77091">77091</option>
+                    <option value="77092">77092</option>
+                    <option value="77093">77093</option>
+                    <option value="77094">77094</option>
+                    <option value="77095">77095</option>
+                    <option value="77096">77096</option>
+                    <option value="77097">77097</option>
+                    <option value="77098">77098</option>
+                    <option value="77099">77099</option>
+                    <option value="77201">77201</option>
+                    <option value="77301">77301</option>
+                    <option value="77302">77302</option>
+                    <option value="77303">77303</option>
+                    <option value="77304">77304</option>
+                    <option value="77306">77306</option>
+                    <option value="77316">77316</option>
+                    <option value="77318">77318</option>
+                    <option value="77327">77327</option>
+                    <option value="77328">77328</option>
+                    <option value="77336">77336</option>
+                    <option value="77338">77338</option>
+                    <option value="77339">77339</option>
+                    <option value="77345">77345</option>
+                    <option value="77346">77346</option>
+                    <option value="77354">77354</option>
+                    <option value="77355">77355</option>
+                    <option value="77356">77356</option>
+                    <option value="77357">77357</option>
+                    <option value="77358">77358</option>
+                    <option value="77362">77362</option>
+                    <option value="77363">77363</option>
+                    <option value="77365">77365</option>
+                    <option value="77368">77368</option>
+                    <option value="77369">77369</option>
+                    <option value="77372">77372</option>
+                    <option value="77373">77373</option>
+                    <option value="77375">77375</option>
+                    <option value="77377">77377</option>
+                    <option value="77378">77378</option>
+                    <option value="77379">77379</option>
+                    <option value="77380">77380</option>
+                    <option value="77381">77381</option>
+                    <option value="77382">77382</option>
+                    <option value="77384">77384</option>
+                    <option value="77385">77385</option>
+                    <option value="77386">77386</option>
+                    <option value="77388">77388</option>
+                    <option value="77389">77389</option>
+                    <option value="77396">77396</option>
+                    <option value="77401">77401</option>
+                    <option value="77406">77406</option>
+                    <option value="77407">77407</option>
+                    <option value="77417">77417</option>
+                    <option value="77422">77422</option>
+                    <option value="77423">77423</option>
+                    <option value="77429">77429</option>
+                    <option value="77430">77430</option>
+                    <option value="77433">77433</option>
+                    <option value="77435">77435</option>
+                    <option value="77441">77441</option>
+                    <option value="77444">77444</option>
+                    <option value="77445">77445</option>
+                    <option value="77446">77446</option>
+                    <option value="77447">77447</option>
+                    <option value="77449">77449</option>
+                    <option value="77450">77450</option>
+                    <option value="77451">77451</option>
+                    <option value="77459">77459</option>
+                    <option value="77461">77461</option>
+                    <option value="77464">77464</option>
+                    <option value="77466">77466</option>
+                    <option value="77469">77469</option>
+                    <option value="77471">77471</option>
+                    <option value="77476">77476</option>
+                    <option value="77477">77477</option>
+                    <option value="77478">77478</option>
+                    <option value="77479">77479</option>
+                    <option value="77480">77480</option>
+                    <option value="77481">77481</option>
+                    <option value="77484">77484</option>
+                    <option value="77485">77485</option>
+                    <option value="77486">77486</option>
+                    <option value="77489">77489</option>
+                    <option value="77493">77493</option>
+                    <option value="77494">77494</option>
+                    <option value="77498">77498</option>
+                    <option value="77502">77502</option>
+                    <option value="77503">77503</option>
+                    <option value="77504">77504</option>
+                    <option value="77505">77505</option>
+                    <option value="77506">77506</option>
+                    <option value="77507">77507</option>
+                    <option value="77510">77510</option>
+                    <option value="77511">77511</option>
+                    <option value="77514">77514</option>
+                    <option value="77515">77515</option>
+                    <option value="77517">77517</option>
+                    <option value="77518">77518</option>
+                    <option value="77520">77520</option>
+                    <option value="77521">77521</option>
+                    <option value="77523">77523</option>
+                    <option value="77530">77530</option>
+                    <option value="77531">77531</option>
+                    <option value="77532">77532</option>
+                    <option value="77533">77533</option>
+                    <option value="77534">77534</option>
+                    <option value="77535">77535</option>
+                    <option value="77536">77536</option>
+                    <option value="77538">77538</option>
+                    <option value="77539">77539</option>
+                    <option value="77541">77541</option>
+                    <option value="77545">77545</option>
+                    <option value="77546">77546</option>
+                    <option value="77547">77547</option>
+                    <option value="77550">77550</option>
+                    <option value="77551">77551</option>
+                    <option value="77554">77554</option>
+                    <option value="77560">77560</option>
+                    <option value="77561">77561</option>
+                    <option value="77562">77562</option>
+                    <option value="77563">77563</option>
+                    <option value="77564">77564</option>
+                    <option value="77565">77565</option>
+                    <option value="77566">77566</option>
+                    <option value="77568">77568</option>
+                    <option value="77571">77571</option>
+                    <option value="77573">77573</option>
+                    <option value="77575">77575</option>
+                    <option value="77577">77577</option>
+                    <option value="77578">77578</option>
+                    <option value="77580">77580</option>
+                    <option value="77581">77581</option>
+                    <option value="77583">77583</option>
+                    <option value="77584">77584</option>
+                    <option value="77586">77586</option>
+                    <option value="77587">77587</option>
+                    <option value="77590">77590</option>
+                    <option value="77591">77591</option>
+                    <option value="77597">77597</option>
+                    <option value="77598">77598</option>
+                    <option value="77617">77617</option>
+                    <option value="77623">77623</option>
+                    <option value="77650">77650</option>
+                    <option value="77661">77661</option>
+                    <option value="77665">77665</option>
+                    <option value="77873">77873</option>
+                  </select>                      
+                </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header" id="crashFilter">
+                <h2 class="mb-0">
+                    <button type="button" class="btn btn-link" data-toggle="collapse" data-target="#collapseThree">
+                        <i class="fa fa-angle-down"></i> Incident Filters
+                    </button>
+                </h2>
+            </div>
+            <div id="collapseThree" class="collapse" aria-labelledby="crashFilter" data-parent="#filters">
+                <div class="card-body">
+                  <span id="labels">First Harmful Event</span>
+                  <select id="harmful" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="1">Animal</option>
+                    <option value="2">Cyclists</option>
+                    <option value="3">Fixed Object</option>
+                    <option value="4">Moving Object</option>
+                    <option value="5">Other Non Collision</option>
+                    <option value="6">Other Object</option>
+                    <option value="7">Overturned</option>
+                    <option value="8">Parked Car</option>
+                    <option value="9">Pedestrian</option>
+                    <option value="10">Train</option>
+                  </select>
+
+                  <span id="labels">Crash Severity</span>
+                  <select id="severity" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="1">Fatality</option>
+                    <option value="2">Non-Serious Injury</option>
+                    <option value="3">Not Injured</option>
+                    <option value="4">Possible Injury</option>
+                    <option value="5">Serious Injury</option>
+                    <option value="6">Unknown</option>
+                  </select>
+
+                  <span id="labels">Intersection Related</span>
+                  <select id="intersection" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="1">Driveway Access</option>
+                    <option value="2">Intersection</option>
+                    <option value="3">Intersection Related</option>
+                    <option value="4">Non Intersection</option>
+                  </select>
+
+                  <span id="labels">Primary Contributing Factors</span>
+                  <select id="primary" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="1">Animal on Road - Domestic</option>
+                    <option value="2">Animal on Road - Wild</option>
+                    <option value="3">Backed without Safety</option>
+                    <option value="4">Cell/Mobile Device Use - Other</option>
+                    <option value="5">Cell/Mobile Device Use - Talking</option>
+                    <option value="6">Cell/Mobile Device Use - Texting</option>
+                    <option value="7">Cell/Mobile Device Use - Unknown</option>
+                    <option value="8">Changed Lane When Unsafe</option>
+                    <option value="9">Disabled in Traffic Lane</option>
+                    <option value="10">Disregard Stop and Go Signal</option>
+                    <option value="11">Disregard Stop Sign or Light</option>
+                    <option value="12">Disregard Turn Marks at Intersection</option>
+                    <option value="13">Disregard Warning Sign at Construction</option>
+                    <option value="14">Distraction in Vehicle</option>
+                    <option value="15">Driver Inattention</option>
+                    <option value="16">Drove without Headlights</option>
+                    <option value="17">Failed to Control Speed</option>
+                    <option value="18">Failed to Drive in a Single Lane</option>
+                    <option value="19">Failed to Give Half of Roadway</option>
+                    <option value="20">Failed to Heed Warning Sign</option>
+                    <option value="69">Failed to Pass to Left Safely</option>
+                    <option value="21">Failed to Pass to Right Safely</option>
+                    <option value="22">Failed to Signal or Gave Wrong Signal</option>
+                    <option value="23">Failed to Stop at Proper Place</option>
+                    <option value="24">Failed to Stop for School Bus</option>
+                    <option value="25">Failed to Stop for Train</option>
+                    <option value="26">Failed to Yield Right of Way - Emergency Vehicle</option>
+                    <option value="27">Failed to Yield Right of Way - Open Intersection</option>
+                    <option value="28">Failed to Yield Right of Way - Private Drive</option>
+                    <option value="29">Failed to Yield Right of Way - Stop Sign</option>
+                    <option value="30">Failed to Yield Right of Way - To Pedestrian</option>
+                    <option value="31">Failed to Yield Right of Way - Turn on Red</option>
+                    <option value="32">Failed to Yield Right of Way - Turning Left</option>
+                    <option value="33">Failed to Yield Right of Way - Yield Sign</option>
+                    <option value="34">Fatigued or Asleep</option>
+                    <option value="35">Faulty Evasive Action</option>
+                    <option value="36">Fire in Vehicle</option>
+                    <option value="37">Fleeing or Evading Police</option>
+                    <option value="38">Followed Too Closely</option>
+                    <option value="39">Had Been Drinking</option>
+                    <option value="40">Handicapped Driver</option>
+                    <option value="41">Ill</option>
+                    <option value="42">Impaired Visibility</option>
+                    <option value="43">Improper Start From Parked Position</option>
+                    <option value="44">Load Not Secured</option>
+                    <option value="45">Opened Door into Traffic Lane</option>
+                    <option value="46">Other Factor</option>
+                    <option value="47">Oversize Vehicle or Load</option>
+                    <option value="48">Overtake and Pass Insufficient Clearance</option>
+                    <option value="49">Parked and Failed to Set Brakes</option>
+                    <option value="50">Parked in Traffic Lane</option>
+                    <option value="51">Parked without Lights</option>
+                    <option value="52">Passed in No Passing Zone</option>
+                    <option value="53">Passed on Right Shoulder</option>
+                    <option value="54">Pedestrian Failed to Yield Right of Way to Vehicle</option>
+                    <option value="55">Road Rage</option>
+                    <option value="56">Speeding - Over Limit</option>
+                    <option value="57">Taking Medication</option>
+                    <option value="58">Turned Improperly - Cut Corner on Left</option>
+                    <option value="59">Turned Improperly - Wide Right</option>
+                    <option value="60">Turned Improperly - Wrong Lane</option>
+                    <option value="61">Turned when Unsafe</option>
+                    <option value="62">Under Influence - Drug</option>
+                    <option value="63">Under Influence - Alcohol</option>
+                    <option value="68">Unknown</option>
+                    <option value="64">Unsafe Speed</option>
+                    <option value="65">Wrong Side - Approach or in Intersection</option>
+                    <option value="66">Wrong Side - Not Passing</option>
+                    <option value="67">Wrong Way - One Way Road</option>
+                  </select>
+
+                  <span id="labels">Grouped Contributing Factors</span>
+                  <select id="grouped" onchange="updateCurrentFilters()">
+                    <option value="">All</option>
+                    <option value="1">Distracted Driver</option>
+                    <option value="2">Driving Under Influence</option>
+                    <option value="3">Aggressive Driving</option>
+                    <option value="4">Speed Related</option>
+                  </select>
+                </div>
+            </div>
+          </div>
+      </div>
+      <br/>
+
+
+      <div class="control-panel-row">
+        <label>Hexagon radius: <span id="radius-value">800</span> meters</label>
+        <input id="radius" type="range" min="0" max="4" step="1" value="2" oninput="renderLayer()">
+      </div>
+
+      <div class="control-panel-row">
+        <input id="auto-radius" type="checkbox">
+        <label for="auto-radius">Auto set radius on zoom</label>
+      </div>
+
+      <div class="control-panel-row radio-buttons">
+        <input id="mode-2d" type="radio" name="mode" value="2d" checked onchange="setMode()">
+        <label for="mode-2d" class="radio-button-label">2D</label>
+
+        <input id="mode-3d" type="radio" name="mode" value="3d" onchange="setMode()">
+        <label for="mode-3d" class="radio-button-label">3D</label>
+      </div>
+
+      <div class="control-panel-row instructions-3d hidden">
+        Shift+drag to adjust 3D angle
+      </div>
+      </div>
+
+      <div id="tooltip"></div>
+
+      <div id="legend" class="hidden">
+        <div class="legend-label">Crashes</div>
+        <div class="legend-colors"></div>
+        <div>
+          <span class="legend-min"></span>
+          <span class="legend-max"></span>
+        </div>
+      </div>
+  </body>
+
+  <script type="text/javascript">
+
+    $(".collapse").on("show.bs.collapse", function(){
+      $(this).prev(".card-header").find(".fa").removeClass("fa-angle-down").addClass("fa-angle-up");
+    }).on("hide.bs.collapse", function(){
+      $(this).prev(".card-header").find(".fa").removeClass("fa-angle-up").addClass("fa-angle-down");
+    });
+
+    //Import the needed layers
+    const {DeckGL, HexagonLayer} = deck;
+
+    //Create named variables
+    var data_url = "data/crashes_2018.csv";
+    let totalValue, filteredData, data;
+    let currentFilters = {};
+
+    const RADIUS_VALUES = [200, 400, 800, 1600, 2000];
+
+    //Array of color values to symbolize the hexagons
+    const colorRange = [
+      [0, 0, 4, 223],
+      [20, 11, 53, 239],
+      [58, 9, 99],
+      [96, 19, 110],
+      [133, 33, 107],
+      [169, 46, 94],
+      [203, 65, 73],
+      [230, 93, 47],
+      [247, 131, 17],
+      [252, 173, 18],
+      [245, 219, 75],
+      [252, 255, 164]
+    ];
+
+    buildLegend();
+
+    //H-GAC's Mapbox access token to use Mapbox basemap
+    accessToken = 'pk.eyJ1IjoiaGdhYy1jZSIsImEiOiJjazF0YXJjdzgwb3N4M21wcWo1dWFrOWx4In0.af3b_L8_JWTnc8SAf6fwcA';
+
+    //Get which mode the map is in
+    let currentMode = document.querySelector("input[name='mode']:checked").value;
+    let current3dPitch = 54;
+
+    //Set the initial view states
+    let viewStateDefaults = {
+      longitude: -95.381214,
+      latitude: 29.742862,
+      zoom: 8.25,
+      pitch: (currentMode === '3d' ? current3dPitch : 0),
+      bearing: 0
+    };
+
+    let currentViewState = viewStateDefaults;
+
+    //Create DeckGL instance
+    const deckgl = new DeckGL(Object.assign({
+      mapboxApiAccessToken: accessToken,
+      mapStyle: "mapbox://styles/mapbox/dark-v9?optimize=true",
+      controller: true,
+      initialViewState: viewStateDefaults,
+      onViewStateChange: ({viewState}) => {
+        if (currentMode === '3d') {
+          current3dPitch = viewState.pitch;
+        }
+        currentViewState = Object.assign({}, viewState);
+        updateRadius();
+        renderLayer();
+      }
+    }, currentViewState));
+
+    setData();
+
+    function setData(){
+      let yearVal = document.getElementById("year").selectedOptions[0].value;
+
+      let year = yearVal || "all";
+
+      let data_url = `data/crashes_${year}.csv`;
+
+      d3.csv(data_url, row => {
+        return {
+            coordinates: [+row.Longitude, +row.Latitude],
+            crashes: +row.Crashes,
+            year: +row.year,
+            month: row.month,
+            day: row.Day_of_Week.toLowerCase(),
+            harmful: row.harmful,
+            areas: row.municipal,
+            severity: row.Severity,
+            intersection: row.intersection,
+            primary: row.primary,
+            grouped: row.grouped,
+            council: row.council,
+            commissioner: row.commissioner,
+            zip: +row.Zip_Code,
+            county: row.County.toLowerCase(),
+            motor_death: +row.Fatality_m,
+            motor_injury: +row.Tot_Injury_m,
+            pedestrian_death: +row.Fatality_p,
+            pedestrian_injury: +row.Tot_Injury_p,
+            cycle_death: +row.Fatality_c,
+            cycle_injury: +row.Tot_Injury_c
+        };
+      }).then(rows => {
+
+          data = rows
+
+          updateCurrentFilters();
+
+      }).catch(e => {
+          console.error(e);
+          alert("Something went wrong, maybe try reloading the page");
+      });
+    }
+
+    function renderLayer(){
+      let radiusValue = getCurrentRadiusInMeters();
+      document.getElementById("radius-value").innerHTML = numberWithCommas(radiusValue);
+
+      let options = {
+        extruded: currentMode === "3d",
+        opacity: (currentMode === "3d" ? 0.5 : 0.3),
+        coverage: (currentMode === "3d" ? 0.9 : 1),
+        radius: radiusValue
+      };
+
+      let hexagons = Object.assign([], data);
+
+      const hex = new HexagonLayer({
+          id: "hexagons",
+          data: filteredData || data,
+          pickable: true,
+          colorRange: colorRange,
+          elevationRange: [0, 7000],
+          getPosition: function(d){
+            return d.coordinates;
+          },
+          autoHighlight: true,
+          onHover: (info) => {
+            updateTooltip(info);
+          },
+          ...options
+      });
+
+      if (filteredData.length === 0){
+        totalValue = hexagons.length;
+      } else {
+        totalValue = filteredData.length;
+      }
+
+      document.getElementById("color-variable-count").innerHTML = "Displaying: " + numberWithCommas(totalValue);
+      document.getElementById("color-variable-label").innerHTML = "crashes";
+
+      deckgl.setProps({
+          layers: [hex],
+          viewState: Object.assign({}, currentViewState)
+      });
+      
+      let maxValue = hex.state.cpuAggregator.state.dimensions.fillColor.sortedBins.maxValue;
+      let minValue = hex.state.cpuAggregator.state.dimensions.fillColor.sortedBins.minValue;
+      updateLegend(maxValue, minValue);
+    }
+
+    function setMode(){
+      currentMode = document.querySelector("input[name='mode']:checked").value;
+
+      if (currentMode === '3d') {
+        if (currentViewState.pitch === 0) {
+          currentViewState.pitch = current3dPitch;
+        }
+
+        document.querySelector(".instructions-3d").classList.remove("hidden");
+      } else if (currentMode === "2d") {
+        currentViewState.pitch = 0;
+        currentViewState.bearing = 0;
+        document.querySelector(".instructions-3d").classList.add("hidden");
+      }
+
+      renderLayer();
+    }
+
+    function updateCurrentFilters(){
+      let filters = {};
+
+      ["county", "harmful", "month", "day", "areas", "severity", "intersection", "grouped", "council", "commissioner", "zip", "primary"].forEach(k => {
+        let val = document.getElementById(k).selectedOptions[0].value;
+        if (val){
+          filters[k] = val;
+        };
+      });
+
+      if (filters.zip){
+        filters.zip = Number(filters.zip);
+      }
+
+      currentFilters = filters;
+      console.log(currentFilters);
+
+      if (currentFilters.year === "" && currentFilters.county === ""){
+          filteredData = undefined;
+      } else {
+          filteredData = data.filter(row => {
+            if (currentFilters.county && row.county !== currentFilters.county) return false;
+            if (currentFilters.month && row.month !== currentFilters.month) return false;
+            if (currentFilters.day && row.day !== currentFilters.day) return false;
+            if (currentFilters.month && row.month !== currentFilters.month) return false;
+            if (currentFilters.areas && row.areas !== currentFilters.areas) return false;
+            if (currentFilters.harmful && row.harmful !== currentFilters.harmful) return false;
+            if (currentFilters.severity && row.severity !== currentFilters.severity) return false;
+            if (currentFilters.intersection && row.intersection !== currentFilters.intersection) return false;
+            if (currentFilters.council && row.council !== currentFilters.council) return false;
+            if (currentFilters.commissioner && row.commissioner !== currentFilters.commissioner) return false;
+            if (currentFilters.zip && row.zip !== currentFilters.zip) return false;
+            if (currentFilters.primary && row.primary !== currentFilters.primary) return false;
+            if (currentFilters.grouped && row.grouped !== currentFilters.grouped) return false;
+            if (currentFilters.grouped == "3") return row.grouped == "3" || row.grouped == "5";
+            if (currentFilters.grouped == "4") return row.grouped == "4" || row.grouped == "5";
+            return true;
+          })
+      }
+
+
+      renderLayer();
+    }
+
+
+    function numberWithCommas(num){
+      return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    function updateTooltip(info){
+
+      let tooltip = document.getElementById("tooltip");
+
+      if (!info.object){
+        tooltip.style.display = "none";
+      } else {
+        let crashes = 0
+        let pedDeath = 0;
+        let pedInjury = 0;
+        let motorDeath = 0;
+        let motorInjury = 0;
+        let cycleDeath = 0;
+        let cycleInjury = 0;
+        let primaryCause = [];
+        for (var i = 0; i < info.object.points.length; i++){
+          crashes += info.object.points[i].crashes;
+          pedDeath += info.object.points[i].pedestrian_death;
+          pedInjury += info.object.points[i].pedestrian_injury;
+          motorDeath += info.object.points[i].motor_death;
+          motorInjury += info.object.points[i].motor_injury;
+          cycleDeath += info.object.points[i].cycle_death;
+          cycleInjury += info.object.points[i].cycle_injury;
+
+          primaryCause.push(info.object.points[i].primary);
+          
+        }
+
+        var countCauses = primaryCause.reduce(function(p,c){
+          p[c] = (p[c] || 0) + 1;
+          return p;
+        }, {});
+
+        var finalCause = Object.keys(countCauses).sort(function(a, b) {
+          return countCauses[b] - countCauses[a];
+        });
+        
+        // tooltip.innerHTML = numberWithCommas(info.object.points.length) + " crashes";
+        tooltip.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Total Crashes</th>
+                <th class="numeric">${numberWithCommas(crashes)}</th>
+                <th class="numeric"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td></td>
+                <td>Injured</td>
+                <td>Killed</td>
+              </tr>
+              <tr>
+                <td>Motorists</td>
+                <td class="numeric">${numberWithCommas(motorInjury)}</td>
+                <td class="numeric">${numberWithCommas(motorDeath)}</td>
+              </tr>
+              <tr>
+                <td>Pedestrian</td>
+                <td class="numeric">${numberWithCommas(pedInjury)}</td>
+                <td class="numeric">${numberWithCommas(pedDeath)}</td>
+              </tr>
+              <tr>
+                <td>Cyclists</td>
+                <td class="numeric">${numberWithCommas(cycleInjury)}</td>
+                <td class="numeric">${numberWithCommas(cycleDeath)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <br/>
+          <table>
+            <thead>
+              <tr>
+                <th>Primary Causes for Crash</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+            </tbody>
+          </table>
+        `;
+
+        addRow(finalCause, countCauses);
+        
+        tooltip.style.display = "block";
+        let ttWidth = tooltip.clientWidth;
+        let ttHeight = tooltip.clientHeight;
+
+        let offsetX = Math.min(info.x, window.innerWidth - ttWidth - 20);
+        let offsetY = info.y + ttHeight > window.innerHeight - 50 ? info.y - ttHeight - 40 : info.y + 10;
+
+        tooltip.style.top = `${offsetY}px`;
+        tooltip.style.left = `${offsetX}px`;
+        
+      }
+    }
+
+    function getCurrentRadiusInMeters(){
+      let radiusInputValue = Number(document.getElementById("radius").value);
+      return RADIUS_VALUES[radiusInputValue];
+    }
+
+    function setRadiusInputValue(radiusInMeters){
+      let inputValue = RADIUS_VALUES.indexOf(radiusInMeters);
+      document.getElementById("radius").value = inputValue;
+    }
+
+    function updateRadius(){
+      if (!document.getElementById("auto-radius").checked) return;
+
+      let currentRadius = getCurrentRadiusInMeters();
+      let newRadius;
+
+      if (currentViewState.zoom < 8){
+        newRadius = 2000;
+      } else if (currentViewState.zoom  < 9){
+        newRadius = 800;
+      } else if (currentViewState.zoom < 10){
+        newRadius = 800;
+      } else if (currentViewState.zoom < 11){
+        newRadius = 400;
+      } else if (currentViewState.zoom < 13){
+        newRadius = 400;
+      } else {
+        newRadius = 200;
+      }
+
+      if (newRadius === currentRadius) return;
+      setRadiusInputValue(newRadius);
+      renderLayer();
+    }
+
+    function buildLegend(){
+      let container = document.querySelector('.legend-colors');
+
+      colorRange.forEach(rgb => {
+        let div = document.createElement('div');
+        div.setAttribute('class', 'legend-bar');
+        div.setAttribute('style', `background-color: rgb(${rgb.join(',')})`);
+        container.appendChild(div);
+      });
+    }
+
+    function updateLegend(max, min){
+      document.getElementById("legend").classList.remove("hidden");
+      document.querySelector(".legend-min").innerHTML = min;
+      document.querySelector(".legend-max").innerHTML = max;
+      document.querySelector(".legend-label").innerHTML = "Crashes";
+    }
+
+    function addRow(causes, countCauses){
+      if (causes.length == 1){
+        let tableRef = document.getElementById("tbody");
+        let newRow = tableRef.insertRow(-1);
+        let newCell = newRow.insertCell(0);
+        let countCell = newRow.insertCell(1);
+        let newText = document.createTextNode(causesList(causes["0"]));
+        let countText = document.createTextNode(countCauses[causes["0"]]);
+        newCell.appendChild(newText);
+        countCell.appendChild(countText);
+      } else if (causes.length == 2){
+        for (var i = 0; i < causes.length; i++){
+          let tableRef = document.getElementById("tbody");
+          let newRow = tableRef.insertRow(-1);
+          let newCell = newRow.insertCell(0);
+          let countCell = newRow.insertCell(1);
+          let newText = document.createTextNode(causesList(causes[i]));
+          let countText = document.createTextNode(countCauses[causes[i]]);
+          newCell.appendChild(newText);
+          countCell.appendChild(countText);
+        }
+      } else if (causes.length > 2){
+        for (var i = 0; i < 3; i++){
+          let tableRef = document.getElementById("tbody");
+          let newRow = tableRef.insertRow(-1);
+          let newCell = newRow.insertCell(0);
+          let countCell = newRow.insertCell(1);
+          let newText = document.createTextNode(causesList(causes[i]));
+          let countText = document.createTextNode(countCauses[causes[i]]);
+          newCell.appendChild(newText);
+          countCell.appendChild(countText);
+        }
+      }
+    }
+
+    function causesList(causes){
+      switch(causes){
+        case "1":
+          return "Animal on Road - Domestic";
+          break;
+        case "2":
+          return "Animal on Road - Wild";
+          break;
+        case "3":
+          return "Backed without Safety";
+          break;
+        case "4":
+          return "Cell/Mobile Device Use - Other";
+          break;
+        case "5":
+          return "Cell/Mobile Device Use - Talking";
+          break;
+        case "6":
+          return "Cell/Mobile Device Use - Texting";
+          break;
+        case "7":
+          return "Cell/Mobile Device Use - Unknown";
+          break;
+        case "8":
+          return "Changed Lane When Unsafe";
+          break;
+        case "9":
+          return "Disabled in Traffic Lane";
+          break;
+        case "10":
+          return "Disregard Stop and Go Signal";
+          break;
+        case "11":
+          return "Disregard Stop Sign or Light";
+          break;
+        case "12":
+          return "Disregard Turn Marks at Intersection";
+          break;
+        case "13":
+          return "Disregard Warning Sign at Construction";
+          break;
+        case "14":
+          return "Distraction in Vehicle";
+          break;
+        case "15":
+          return "Driver Inattention";
+          break;
+        case "16":
+          return "Drove without Headlights";
+          break;
+        case "17":
+          return "Failed to Control Speed";
+          break;
+        case "18":
+          return "Failed to Drive in a Single Lane";
+          break;
+        case "19":
+          return "Failed to Give Half of Roadway";
+          break;
+        case "20":
+          return "Failed to Heed Warning Sign";
+          break;
+        case "21":
+          return "Failed to Pass to Right Safely";
+          break;
+        case "22":
+          return "Failed to Signal or Gave Wrong Signal";
+          break;
+        case "23":
+          return "Failed to Stop at Proper Place";
+          break;
+        case "24":
+          return "Failed to Stop for School Bus";
+          break;
+        case "25":
+          return "Failed to Stop for Train";
+          break;
+        case "26":
+          return "Failed to Yield Right of Way - Emergency Vehicle";
+          break;
+        case "27":
+          return "Failed to Yield Right of Way - Open Intersection";
+          break;
+        case "28":
+          return "Failed to Yield Right of Way - Private Drive";
+          break;
+        case "29":
+          return "Failed to Yield Right of Way - Stop Sign";
+          break;
+        case "30":
+          return "Failed to Yield Right of Way - To Pedestrian";
+          break;
+        case "31":
+          return "Failed to Yield Right of Way - Turn on Red";
+          break;
+        case "32":
+          return "Failed to Yield Right of Way - Turning Left";
+          break;
+        case "33":
+          return "Failed to Yield Right of Way - Yield Sign";
+          break;
+        case "34":
+          return "Fatigued or Asleep";
+          break;
+        case "35":
+          return "Faulty Evasive Action";
+          break;
+        case "36":
+          return "Fire in Vehicle";
+          break;
+        case "37":
+          return "Fleeing or Evading Police";
+          break;
+        case "38":
+          return "Followed Too Closely";
+          break;
+        case "39":
+          return "Had Been Drinking";
+          break;
+        case "40":
+          return "Hanicapped Driver";
+          break;
+        case "41":
+          return "Ill";
+          break;
+        case "42":
+          return "Impaired Visibility";
+          break;
+        case "43":
+          return "Improper Start From Parked Position";
+          break;
+        case "44":
+          return "Load Not Secured";
+          break;
+        case "45":
+          return "Opened Door into Traffic Lane";
+          break;
+        case "46":
+          return "Other Factor";
+          break;
+        case "47":
+          return "Oversize Vehicle or Load";
+          break;
+        case "48":
+          return "Overtake and Pass Insufficient Clearance";
+          break;
+        case "49":
+          return "Parked and Failed to Set Brakes";
+          break;
+        case "50":
+          return "Parked in Traffic Lane";
+          break;
+        case "51":
+          return "Parked without Lights";
+          break;
+        case "52":
+          return "Passed in No Passing Zone";
+          break;
+        case "53":
+          return "Passed on Right Shoulder";
+          break;
+        case "54":
+          return "Pedestrian Failed to Yield Right of Way to Vehicle";
+          break;
+        case "55":
+          return "Road Rage";
+          break;
+        case "56":
+          return "Speeding - Over Limit";
+          break;
+        case "57":
+          return "Taking Medication";
+          break;
+        case "58":
+          return "Turned Improperly - Cut Corner on Left";
+          break;
+        case "59":
+          return "Turned Improperly - Wide Right";
+          break;
+        case "60":
+          return "Turned Improperly - Wrong Lane";
+          break;
+        case "61":
+          return "Turned when Unsafe";
+          break;
+        case "62":
+          return "Under Influence - Drug";
+          break;
+        case "63":
+          return "Under Influence - Alcohol";
+          break;
+        case "64":
+          return "Unsafe Speed";
+          break;
+        case "65":
+          return "Wrong Side - Approach or in Intersection";
+          break;
+        case "66":
+          return "Wrong Side - Not Passing";
+          break;
+        case "67":
+          return "Wrong Way - One Way Road";
+          break;
+        case "68":
+          return "Unknown";
+          break;
+        case "69":
+          return "Failed to Pass to Left Safely";
+          break;
+      }
+    }
+  </script>
+</html>
